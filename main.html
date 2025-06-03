@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Subtitle Generator</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>🎬 Subtitle Generator</h1>
+
+    <div class="card">
+      <label for="videoUpload" class="upload-button">
+        📤 Upload Video
+      </label>
+      <input type="file" id="videoUpload" accept="video/*,.mp4,.mkv,.webm,.mov,.avi,video/mp4,video/x-matroska,video/webm,video/quicktime,video/x-msvideo" hidden />
+      <p id="fileName">No video selected</p>
+    </div>
+
+    <div class="card">
+      <label class="lang-label" for="sourceLang">🌐 Source Language</label>
+      <select id="sourceLang">
+        <option value="">-- Select Source --</option>
+        <option value="english">English</option>
+        <option value="hindi">Hindi</option>
+        <option value="german">German</option>
+        <option value="chinese">Chinese</option>
+        <option value="korean">Korean</option>
+        <option value="japanese">Japanese</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <label class="lang-label" for="targetLang">🌍 Target Language</label>
+      <select id="targetLang">
+        <option value="">-- Select Target --</option>
+        <option value="english">English</option>
+        <option value="hindi">Hindi</option>
+        <option value="german">German</option>
+        <option value="chinese">Chinese</option>
+        <option value="korean">Korean</option>
+        <option value="japanese">Japanese</option>
+      </select>
+    </div>
+
+    <button id="generateBtn" class="generate-btn">Generate Subtitle</button>
+    <button id="downloadBtn" class="download-btn" disabled>Download Subtitle</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

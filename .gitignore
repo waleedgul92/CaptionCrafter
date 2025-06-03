@@ -1,0 +1,8 @@
+files/*
+*.wav
+*.txt
+
+.env
+*.env
+
+tests/

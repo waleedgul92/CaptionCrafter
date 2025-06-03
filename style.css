@@ -1,0 +1,117 @@
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: radial-gradient(circle at top, #0f2027, #203a43, #2c5364);
+  color: #fff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.container {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 40px;
+  width: 90%;
+  max-width: 420px;
+  text-align: center;
+  box-shadow: 0 0 20px rgba(0,0,0,0.4);
+}
+
+h1 {
+  margin-bottom: 30px;
+  font-size: 1.8rem;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 20px;
+  border-radius: 15px;
+  margin-bottom: 20px;
+}
+
+.upload-button {
+  display: inline-block;
+  padding: 12px 25px;
+  background: #00aaff;
+  color: white;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.3s ease;
+}
+
+.upload-button:hover {
+  background: #0077cc;
+}
+
+#fileName {
+  margin-top: 10px;
+  font-size: 0.9em;
+  color: #ccc;
+}
+
+.lang-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: bold;
+}
+
+select {
+  width: 100%;
+  padding: 10px 15px;
+  border-radius: 10px;
+  border: none;
+  font-size: 1em;
+  background-color: #fff;
+  color: #333;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='gray' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+}
+
+.generate-btn {
+  margin-top: 10px;
+  padding: 14px 30px;
+  font-size: 1.1rem;
+  background: #ffc107;
+  color: #000;
+  border: none;
+  border-radius: 10px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.generate-btn:hover {
+  background: #e0a800;
+}
+
+.download-btn {
+  margin-top: 15px;
+  padding: 14px 30px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  background: grey;
+  border: none;
+  border-radius: 10px;
+  color: white;
+  cursor: not-allowed;
+  opacity: 0.6;
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.download-btn.active {
+  background: linear-gradient(to right, #00c851, #007e33);
+  cursor: pointer;
+  opacity: 1;
+}
+
+.download-btn.active:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 10px rgba(0, 200, 81, 0.6);
+}

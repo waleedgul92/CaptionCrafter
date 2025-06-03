@@ -11,21 +11,27 @@ from pydub import AudioSegment
 import speech_recognition as sr
 from io import BytesIO
 from faster_whisper import WhisperModel
-
+import logging
+logger= logging.getLogger(__name__)
 
 def extract_audio(input_video, input_video_name):
     extracted_audio_path = f"./files/audio-{input_video_name}.wav"
 
+    logger.info(f"Extracting audio from video: {input_video} to {extracted_audio_path}")
     if not os.path.exists(input_video):
+        logger.error(f"The video file '{input_video}' was not found.")
         raise FileNotFoundError(f"The video file '{input_video}' was not found.")
     
     try:
+        logger.info("Starting audio extraction...")
         video_clip = VideoFileClip(input_video)
         audio_clip = video_clip.audio
         audio_clip.write_audiofile(extracted_audio_path)
         audio_clip.close()  
-        video_clip.close()  
+        video_clip.close() 
+        logger.info(f"Audio extracted successfully to {extracted_audio_path}") 
     except Exception as e:
+        logger.error(f"Error extracting audio: {e}")
         print(f"Error extracting audio: {e}")
         raise
 
@@ -54,26 +60,34 @@ def transcribe_audio_to_text(audio_file , language="ja",model_size="tiny",device
 
 
 def format_timestamp(seconds):
+    logger.info(f"Formatting timestamp for {seconds} seconds")
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
     millis = int((seconds - int(seconds)) * 1000)
+    logger.info(f"Formatted timestamp: {hours:02}:{minutes:02}:{secs:02}.{millis:03}")
     return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
 
 def save_transcription_to_txt(segments):
+    logger.info("Saving transcription to VTT file")
     output_txt_file = "./files/transcription.vtt"
     with open(output_txt_file, 'w', encoding='utf-8') as f:
         f.write("WEBVTT\n\n")
+        logger.info(f"Transcription file created at {output_txt_file}")
         for i, segment in enumerate(segments, 1):
             start_time = format_timestamp(segment.start)
             end_time = format_timestamp(segment.end)
             f.write(f"{start_time} --> {end_time}\n")
             f.write(f"{segment.text}\n\n")
+            logger.info(f"Segment {i}: {start_time} --> {end_time} | {segment.text}")
+
 
 
 
 def save_translated_text(text):
+    logger.info("Saving translated text to VTT file")
     output_txt_file = "./files/transcription_trans.vtt"
     with open(output_txt_file, 'w', encoding='utf-8') as f:
         f.write(text + "\n")
+        logger.info(f"Translated text file created at {output_txt_file}")
 # print(transcribe_audio_to_text("./files/audio-Episode_8.wav"))

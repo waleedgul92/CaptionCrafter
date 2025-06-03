@@ -1,5 +1,3 @@
-
-
 from transcribe import save_translated_text
 from model import load_gemini_model
 import logging

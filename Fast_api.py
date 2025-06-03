@@ -85,8 +85,8 @@ def transcribe_audio_endpoint(
             segments = transcribe_audio_to_text(input_audio_path, language, model_size, device, compute_type)
 
             save_transcription_to_txt(segments)
-            if os.path.exists(input_audio_path):
-                os.remove(input_audio_path)
+            # if os.path.exists(input_audio_path):
+            #     os.remove(input_audio_path)
             return {"description": "Transcription file saved successfully."}
     except Exception as e:
         logger.error(f"Error transcribing audio: {e}")
@@ -95,7 +95,7 @@ def transcribe_audio_endpoint(
 
 @app.post("/translate_text")
 def translate_text_endpoint(
-    input_file:str ,
+    input_file: UploadFile = File(...),
     source_language: str = "japanese",
     target_language: str = "english",
     
@@ -104,13 +104,23 @@ def translate_text_endpoint(
     Endpoint to translate text using a language model.
     """
     try:
-        text=""
-        with open(input_file, "r", encoding="utf-8") as f:
-            text = f.read()
-        translated_text = translate_text(llm,text, target_language, source_language)
+        text_from_file = ""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Use a more descriptive name for the path of the saved text file
+            temp_file_path = os.path.join(temp_dir, input_file.filename if input_file.filename else "uploaded_text_file.txt")
+            
+            # Save the uploaded file to the temporary path
+            # input_file.file is a file-like object (SpooledTemporaryFile)
+            with open(temp_file_path, "wb") as f_write: # Open in binary write mode
+                shutil.copyfileobj(input_file.file, f_write) # Copy content
+            
+            # Now read the text from the temporary file we just saved
+            with open(temp_file_path, "r", encoding="utf-8") as f_read: # Open in text read mode
+                text_from_file = f_read.read()
+        translated_text = translate_text(llm,text_from_file, target_language, source_language)
         save_translated_text(translated_text)
-        if os.path.exists(input_file):
-            os.remove(input_file)
+        # if os.path.exists(input_file):
+        #     os.remove(input_file)
         return {"description": "Translation file saved successfully."}
     except Exception as e:
         logger.error(f"Error translating text: {e}")

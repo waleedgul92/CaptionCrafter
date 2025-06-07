@@ -4,18 +4,18 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def translate_text(llm ,text, target_language="english",source_language="japanese"):
+def translate_text(llm, text, target_language="english", source_language="japanese", audio_filename=None):
     """
     Translates the given text to the target language using the loaded Gemini model.
     """
     
     if not llm:
         logger.error("Translation model is not available.")
-        return "Translation model is not available."
+        return "Translation model is not available.", None
 
     if not text:
         logger.error("No text provided for translation.")
-        return "No text provided for translation."
+        return "No text provided for translation.", None
 
     try:
         logger.info(f"Translating text to {target_language} from {source_language}... ")
@@ -30,11 +30,21 @@ def translate_text(llm ,text, target_language="english",source_language="japanes
         logger.info("Translation completed successfully.")
         if not response or not hasattr(response, 'content'):
             logger.error("Invalid response from the translation model.")
-            return "Translation failed due to an invalid response."
-        return response.content
+            return "Translation failed due to an invalid response.", None
+        
+        # Save the translated text with descriptive filename
+        output_path = save_translated_text(
+            response.content, 
+            audio_filename=audio_filename, 
+            source_language=source_language, 
+            target_language=target_language
+        )
+        
+        return response.content, output_path
+        
     except Exception as e:
         logger.error(f"Error during translation: {e}")
-        return "Translation failed due to an error."
+        return "Translation failed due to an error.", None
     
 
     

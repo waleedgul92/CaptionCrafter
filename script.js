@@ -20,6 +20,7 @@ const languageCodeMap = {
   "japanese": "ja"
 };
 
+// Enhanced error checking with better logging
 if (!fileInput) console.error("Error: Element with ID 'videoUpload' not found.");
 if (!generateBtn) console.error("Error: Element with ID 'generateBtn' not found.");
 if (!fileNameDisplay) console.error("Error: Element with ID 'fileName' not found.");
@@ -27,6 +28,23 @@ if (!statusDisplay) console.error("Error: Element with ID 'status' not found.");
 if (!sourceLangSelect) console.error("Error: Element with ID 'sourceLang' not found.");
 if (!targetLangSelect) console.error("Error: Element with ID 'targetLang' not found.");
 if (!downloadBtn) console.error("Error: Element with ID 'downloadBtn' not found.");
+
+// Health check on page load
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/health`);
+    if (response.ok) {
+      const health = await response.json();
+      console.log('API Health:', health);
+      if (!health.llm_loaded) {
+        updateStatus('⚠️ Warning: Translation model not loaded. Translation may not work.', 'warning');
+      }
+    }
+  } catch (error) {
+    console.error('Health check failed:', error);
+    updateStatus('⚠️ Warning: Cannot connect to API server.', 'warning');
+  }
+});
 
 if (fileInput) {
   fileInput.addEventListener('change', () => {
@@ -102,13 +120,15 @@ if (generateBtn) {
         method: 'POST',
         body: formDataExtract
       });
+      
       if (!extractResponse.ok) {
         const errData = await extractResponse.json().catch(() => ({ detail: "Audio extraction failed. Status: " + extractResponse.status }));
         throw new Error(errData.detail || "Audio extraction failed. Status: " + extractResponse.status);
       }
+      
       const extractData = await extractResponse.json();
-      updateStatus('✅ Step 1: Audio extracted. Server path: ' + extractData.extracted_audio_path, 'success');
-      console.log("Extracted audio path on server:", extractData.extracted_audio_path);
+      updateStatus(`✅ Step 1: ${extractData.message}. Path: ${extractData.extracted_audio_path}`, 'success');
+      console.log("Extract response:", extractData);
 
       // --- Step 2: Transcribe Audio ---
       updateStatus('⏳ Step 2: Transcribing audio (generates transcript.vtt on server)...', 'info');
@@ -120,12 +140,15 @@ if (generateBtn) {
         method: 'POST',
         body: formDataTranscribe
       });
+      
       if (!transcribeResponse.ok) {
         const errData = await transcribeResponse.json().catch(() => ({ detail: "Transcription failed. Status: " + transcribeResponse.status }));
         throw new Error(errData.detail || "Transcription failed. Status: " + transcribeResponse.status);
       }
+      
       const transcribeData = await transcribeResponse.json();
-      updateStatus('✅ Step 2: Transcription successful. Server: ' + transcribeData.description, 'success');
+      updateStatus(`✅ Step 2: ${transcribeData.message}. ${transcribeData.description}`, 'success');
+      console.log("Transcribe response:", transcribeData);
 
       // --- Step 3: Translate Transcript ---
       updateStatus('⏳ Step 3: Fetching transcript and translating...', 'info');
@@ -163,7 +186,7 @@ if (generateBtn) {
       }
 
       const translateData = await translateResponse.json();
-      updateStatus('✅ Step 3: Translation successful! Ready to download translated subtitles.', 'success');
+      updateStatus(`✅ Step 3: ${translateData.message} Ready to download translated subtitles.`, 'success');
       console.log("Translation completed:", translateData);
 
       // Enable download button after successful translation
@@ -222,12 +245,72 @@ if (downloadBtn) {
       
       updateStatus('✅ Translated subtitles downloaded successfully!', 'success');
       
+      // Optionally trigger cleanup after successful download
+      setTimeout(triggerCleanup, 2000); // Clean up after 2 seconds
+      
     } catch (error) {
       updateStatus(`❌ Download failed: ${error.message}`, 'error');
       console.error('Download error:', error);
     }
   });
 }
+
+// New cleanup functionality
+async function triggerCleanup() {
+  try {
+    updateStatus('⏳ Cleaning up intermediate files...', 'info');
+    
+    const cleanupResponse = await fetch(`${API_BASE_URL}/cleanup`, {
+      method: 'POST'
+    });
+    
+    if (cleanupResponse.ok) {
+      const cleanupData = await cleanupResponse.json();
+      console.log('Cleanup completed:', cleanupData);
+      updateStatus(`🧹 ${cleanupData.message}`, 'success');
+    } else {
+      console.warn('Cleanup request failed:', cleanupResponse.status);
+    }
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    // Don't show cleanup errors to user as they're not critical
+  }
+}
+
+// Add cleanup button functionality (if you want to add a manual cleanup button)
+function addCleanupButton() {
+  const container = document.querySelector('.container');
+  if (container && !document.getElementById('cleanupBtn')) {
+    const cleanupBtn = document.createElement('button');
+    cleanupBtn.id = 'cleanupBtn';
+    cleanupBtn.textContent = '🧹 Clean Up Files';
+    cleanupBtn.className = 'cleanup-btn';
+    cleanupBtn.style.cssText = `
+      margin-top: 10px;
+      padding: 10px 20px;
+      background: #6c757d;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    `;
+    
+    cleanupBtn.addEventListener('click', triggerCleanup);
+    container.appendChild(cleanupBtn);
+  }
+}
+
+// Call this if you want the cleanup button
+// addCleanupButton();
+
+// Auto-cleanup on page unload
+window.addEventListener('beforeunload', () => {
+  // Try to trigger cleanup before page unloads (best effort)
+  if ('sendBeacon' in navigator) {
+    navigator.sendBeacon(`${API_BASE_URL}/cleanup`, JSON.stringify({}));
+  }
+});
 
 function updateStatus(message, type = 'info') {
   if (statusDisplay) {

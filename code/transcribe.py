@@ -70,11 +70,24 @@ def format_timestamp(seconds):
     logger.info(f"Formatted timestamp: {hours:02}:{minutes:02}:{secs:02}.{millis:03}")
     return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
 
-def save_transcription_to_txt(segments):
+def save_transcription_to_txt(segments, audio_filename=None, language="unknown"):
+    """
+    Save transcription with descriptive filename: transcript_audiofilename_language.vtt
+    """
     logger.info("Saving transcription to VTT file")
     output_directory = "../files"
     os.makedirs(output_directory, exist_ok=True)
-    output_txt_file = "../files/transcription.vtt"
+    
+    # Create descriptive filename
+    if audio_filename:
+        # Remove file extension and "audio-" prefix if present
+        clean_name = audio_filename.replace("audio-", "").split('.')[0]
+        output_filename = f"transcript_{clean_name}_{language}.vtt"
+    else:
+        output_filename = f"transcript_unknown_{language}.vtt"
+    
+    output_txt_file = os.path.join(output_directory, output_filename)
+    
     with open(output_txt_file, 'w', encoding='utf-8') as f:
         f.write("WEBVTT\n\n")
         logger.info(f"Transcription file created at {output_txt_file}")
@@ -88,12 +101,28 @@ def save_transcription_to_txt(segments):
     return output_txt_file
 
 
-def save_translated_text(text):
+def save_translated_text(text, audio_filename=None, source_language="unknown", target_language="unknown"):
+    """
+    Save translated text with descriptive filename: transcript_translated_audiofilename_sourcelang_targetlang.vtt
+    """
     output_directory = "../files"
     os.makedirs(output_directory, exist_ok=True)
     logger.info("Saving translated text to VTT file")
-    output_txt_file = "../files/transcription_translated.vtt"
+    
+    # Create descriptive filename
+    if audio_filename:
+        # Remove file extension and "audio-" prefix if present
+        clean_name = audio_filename.replace("audio-", "").split('.')[0]
+        output_filename = f"transcript_translated_{clean_name}_{source_language}_{target_language}.vtt"
+    else:
+        output_filename = f"transcript_translated_unknown_{source_language}_{target_language}.vtt"
+    
+    output_txt_file = os.path.join(output_directory, output_filename)
+    
     with open(output_txt_file, 'w', encoding='utf-8') as f:
         f.write(text + "\n")
         logger.info(f"Translated text file created at {output_txt_file}")
+    
+    return output_txt_file
+
 # print(transcribe_audio_to_text("./files/audio-Episode_8.wav"))

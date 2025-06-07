@@ -11,10 +11,9 @@
     <h1>🎬 Subtitle Generator</h1>
 
     <div class="card">
-      <label for="videoUpload" class="upload-button">
-        📤 Upload Video
-      </label>
-      <input type="file" id="videoUpload" accept="video/*,.mp4,.mkv,.webm,.mov,.avi,video/mp4,video/x-matroska,video/webm,video/quicktime,video/x-msvideo" hidden />
+<label for="videoUpload" class="upload-button">📤 Upload Video</label>
+<input type="file" id="videoUpload" accept=".ts,.mkv,.mp4,video/*" hidden />
+
       <p id="fileName">No video selected</p>
     </div>
 
@@ -46,8 +45,9 @@
 
     <button id="generateBtn" class="generate-btn">Generate Subtitle</button>
     <button id="downloadBtn" class="download-btn" disabled>Download Subtitle</button>
+    <div id="status" class="status-message"></div> 
   </div>
 
-  <script src="script.js"></script>
+  <script src="script.js"></script> 
 </body>
 </html>

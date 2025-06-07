@@ -113,9 +113,9 @@ def save_translated_text(text, audio_filename=None, source_language="unknown", t
     if audio_filename:
         # Remove file extension and "audio-" prefix if present
         clean_name = audio_filename.replace("audio-", "").split('.')[0]
-        output_filename = f"transcript_translated_{clean_name}_{source_language}_{target_language}.vtt"
+        output_filename = f"translated_transcript_{clean_name}_{source_language}_{target_language}.vtt"
     else:
-        output_filename = f"transcript_translated_unknown_{source_language}_{target_language}.vtt"
+        output_filename = f"translated_transcript_unknown_{source_language}_{target_language}.vtt"
     
     output_txt_file = os.path.join(output_directory, output_filename)
     

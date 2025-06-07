@@ -131,7 +131,7 @@ if (generateBtn) {
       console.log("Extract response:", extractData);
 
       // --- Step 2: Transcribe Audio ---
-      updateStatus('⏳ Step 2: Transcribing audio (generates transcript.vtt on server)...', 'info');
+      updateStatus('⏳ Step 2: Transcribing audio..', 'info');
       const formDataTranscribe = new FormData();
       formDataTranscribe.append('audio_file', selectedFile);
       formDataTranscribe.append('language', languageCodeForTranscription);

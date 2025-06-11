@@ -20,11 +20,11 @@ if not google_api_key:
 def load_gemini_model():
     if not google_api_key:
         logger.error("Cannot load Gemini: GOOGLE_API_KEY is missing.")
-        return None
+        return None,
     try:
         logger.info("Loading Gemini model...")
         # Using ChatGoogleGenerativeAI for chat-optimized models like gemini-pro
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-preview-05-20", google_api_key=google_api_key  )
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-preview-05-20", google_api_key=google_api_key ,temperature=0.1)
         logger.info("Gemini model loaded successfully.")
         return llm
     except Exception as e:

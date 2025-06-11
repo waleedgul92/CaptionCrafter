@@ -226,14 +226,13 @@ async def translate_text_endpoint(
             # Read the file
             with open(temp_file_path, "r", encoding="utf-8") as f_read:
                 text_from_file = f_read.read()
-        
-        # Translate the text with descriptive filename
+
+
         translated_text, current_translated_path = translate_text(
             llm, 
             text_from_file, 
             target_language, 
             source_language,
-            audio_filename=current_audio_filename
         )
         
         if current_translated_path is None:
@@ -369,21 +368,21 @@ async def files_status():
         "files_directory": str(files_dir)
     }
 
-# Register cleanup function to run on app shutdown
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    Cleanup intermediate files when the application shuts down.
-    """
-    logger.info("Application shutting down, cleaning up intermediate files...")
-    try:
-        result = cleanup_intermediate_files()
-        logger.info(f"Shutdown cleanup completed: {result.message}")
-    except Exception as e:
-        logger.error(f"Error during shutdown cleanup: {e}")
+# # Register cleanup function to run on app shutdown
+# @app.on_event("shutdown")
+# async def shutdown_event():
+#     """
+#     Cleanup intermediate files when the application shuts down.
+#     """
+#     logger.info("Application shutting down, cleaning up intermediate files...")
+#     try:
+#         result = cleanup_intermediate_files()
+#         logger.info(f"Shutdown cleanup completed: {result.message}")
+#     except Exception as e:
+#         logger.error(f"Error during shutdown cleanup: {e}")
 
-# Also register cleanup for when the process exits
-atexit.register(lambda: cleanup_intermediate_files())
+# # Also register cleanup for when the process exits
+# atexit.register(lambda: cleanup_intermediate_files())
 
 if __name__ == "__main__":
     # Run the FastAPI app with Uvicorn

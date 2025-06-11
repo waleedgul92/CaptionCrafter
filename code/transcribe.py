@@ -2,7 +2,7 @@ import os
 import argparse
 import speech_recognition as sr
 from pydub import AudioSegment
-
+import re
 import os
 import argparse
 from moviepy import VideoFileClip
@@ -41,7 +41,7 @@ def extract_audio(input_video, input_video_name):
 
 
 
-def transcribe_audio_to_text(audio_file , language="ja",model_size="tiny",device="cpu",compute_type="int8"): 
+def transcribe_audio_to_text(audio_file , language="ja",model_size="small",device="cpu",compute_type="int8"): 
     
     model_size = model_size
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
@@ -51,11 +51,13 @@ def transcribe_audio_to_text(audio_file , language="ja",model_size="tiny",device
         beam_size=5,
         vad_filter=True,
         task="transcribe", 
-        vad_parameters={"threshold": 0.5, "min_silence_duration_ms": 1000, }  ,# 1 sec silence
+        vad_parameters={"threshold": 0.5, "min_silence_duration_ms": 1000}  ,# .5 sec silence
         
     )
     ## sgement => start , end , text
     ## info => language, duration, num_segments, etc.
+    for segment in segments:
+        print(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
 
     return segments
 
@@ -70,7 +72,7 @@ def format_timestamp(seconds):
     logger.info(f"Formatted timestamp: {hours:02}:{minutes:02}:{secs:02}.{millis:03}")
     return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
 
-def save_transcription_to_txt(segments, audio_filename=None, language="unknown"):
+def save_transcription_to_txt(segments, audio_filename=None, language="unknown",max_chars_per_subtitle=150):
     """
     Save transcription with descriptive filename: transcript_audiofilename_language.vtt
     """
@@ -88,15 +90,33 @@ def save_transcription_to_txt(segments, audio_filename=None, language="unknown")
     
     output_txt_file = os.path.join(output_directory, output_filename)
     
-    with open(output_txt_file, 'w', encoding='utf-8') as f:
-        f.write("WEBVTT\n\n")
-        logger.info(f"Transcription file created at {output_txt_file}")
-        for i, segment in enumerate(segments, 1):
-            start_time = format_timestamp(segment.start)
-            end_time = format_timestamp(segment.end)
-            f.write(f"{start_time} --> {end_time}\n")
-            f.write(f"{segment.text}\n\n")
-            logger.info(f"Segment {i}: {start_time} --> {end_time} | {segment.text}")
+    with open(output_txt_file, 'w', encoding='utf-8', buffering=8192) as f:
+            f.write("WEBVTT\n\n")
+            logger.info(f"Transcription file created at {output_txt_file}")
+            
+            segment_count = 0
+            for segment in segments:
+                    # Split long segments into manageable chunks
+                    segment_chunks = split_long_segment(segment, max_chars=max_chars_per_subtitle)
+                    
+                    for chunk in segment_chunks:
+                        segment_count += 1
+                        start_time = format_timestamp(chunk.start)
+                        end_time = format_timestamp(chunk.end)
+                        
+                        # Clean and validate text
+                        text = chunk.text.strip()
+                        if not text:
+                            continue
+                            
+                        # Write subtitle entry
+                        f.write(f"{start_time} --> {end_time}\n")
+                        f.write(f"{text}\n\n")
+                        
+                        # Log every 50 segments to avoid spam
+                        if segment_count % 50 == 0:
+                            logger.info(f"Processed {segment_count} segments...")
+
 
     return output_txt_file
 
@@ -126,3 +146,55 @@ def save_translated_text(text, audio_filename=None, source_language="unknown", t
     return output_txt_file
 
 # print(transcribe_audio_to_text("./files/audio-Episode_8.wav"))
+
+
+
+def split_long_segment(segment, max_chars=150, max_duration=8.0):
+    """
+    Split long segments into smaller chunks based on character count and duration
+    """
+    text = segment.text.strip()
+    duration = segment.end - segment.start
+    
+    # If segment is within limits, return as is
+    if len(text) <= max_chars and duration <= max_duration:
+        return [segment]
+    
+    # Split by natural sentence boundaries first
+    sentences = re.split(r'[.!?。！？]+', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    
+    if len(sentences) <= 1:
+        # If no sentence boundaries, split by clauses or commas
+        clauses = re.split(r'[,，、;；]+', text)
+        clauses = [c.strip() for c in clauses if c.strip()]
+        sentences = clauses if len(clauses) > 1 else [text]
+    
+    # Create new segments with estimated timestamps
+    new_segments = []
+    chars_per_second = len(text) / duration if duration > 0 else 1
+    current_time = segment.start
+    
+    for i, sentence in enumerate(sentences):
+        if not sentence:
+            continue
+            
+        # Estimate duration for this sentence
+        sentence_duration = len(sentence) / chars_per_second
+        sentence_end = min(current_time + sentence_duration, segment.end)
+        
+        # Create a new segment-like object
+        class SegmentChunk:
+            def __init__(self, start, end, text):
+                self.start = start
+                self.end = end
+                self.text = text
+        
+        new_segments.append(SegmentChunk(current_time, sentence_end, sentence))
+        current_time = sentence_end
+    
+    return new_segments
+
+
+# segments= transcribe_audio_to_text("../tests/chinese/video 2/audio-Episode 4.wav", language="zh", model_size="small", device="cpu")
+# print(segments)

@@ -2,7 +2,7 @@ import os
 import argparse
 import speech_recognition as sr
 from pydub import AudioSegment
-import re
+
 import os
 import argparse
 from moviepy import VideoFileClip
@@ -12,6 +12,7 @@ import speech_recognition as sr
 from io import BytesIO
 from faster_whisper import WhisperModel
 import logging
+import re
 logger= logging.getLogger(__name__)
 
 def extract_audio(input_video, input_video_name):
@@ -41,7 +42,7 @@ def extract_audio(input_video, input_video_name):
 
 
 
-def transcribe_audio_to_text(audio_file , language="ja",model_size="small",device="cpu",compute_type="int8"): 
+def transcribe_audio_to_text(audio_file , language="ja",model_size="tiny",device="cpu",compute_type="int8"): 
     
     model_size = model_size
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
@@ -51,102 +52,13 @@ def transcribe_audio_to_text(audio_file , language="ja",model_size="small",devic
         beam_size=5,
         vad_filter=True,
         task="transcribe", 
-        vad_parameters={"threshold": 0.5, "min_silence_duration_ms": 1000}  ,# .5 sec silence
+        vad_parameters={"threshold": 0.5, "min_silence_duration_ms": 1000, }  ,# 1 sec silence
         
     )
     ## sgement => start , end , text
     ## info => language, duration, num_segments, etc.
-    for segment in segments:
-        print(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
 
     return segments
-
-
-
-def format_timestamp(seconds):
-    logger.info(f"Formatting timestamp for {seconds} seconds")
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int((seconds - int(seconds)) * 1000)
-    logger.info(f"Formatted timestamp: {hours:02}:{minutes:02}:{secs:02}.{millis:03}")
-    return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
-
-def save_transcription_to_txt(segments, audio_filename=None, language="unknown",max_chars_per_subtitle=150):
-    """
-    Save transcription with descriptive filename: transcript_audiofilename_language.vtt
-    """
-    logger.info("Saving transcription to VTT file")
-    output_directory = "../files"
-    os.makedirs(output_directory, exist_ok=True)
-    
-    # Create descriptive filename
-    if audio_filename:
-        # Remove file extension and "audio-" prefix if present
-        clean_name = audio_filename.replace("audio-", "").split('.')[0]
-        output_filename = f"transcript_{clean_name}_{language}.vtt"
-    else:
-        output_filename = f"transcript_unknown_{language}.vtt"
-    
-    output_txt_file = os.path.join(output_directory, output_filename)
-    
-    with open(output_txt_file, 'w', encoding='utf-8', buffering=8192) as f:
-            f.write("WEBVTT\n\n")
-            logger.info(f"Transcription file created at {output_txt_file}")
-            
-            segment_count = 0
-            for segment in segments:
-                    # Split long segments into manageable chunks
-                    segment_chunks = split_long_segment(segment, max_chars=max_chars_per_subtitle)
-                    
-                    for chunk in segment_chunks:
-                        segment_count += 1
-                        start_time = format_timestamp(chunk.start)
-                        end_time = format_timestamp(chunk.end)
-                        
-                        # Clean and validate text
-                        text = chunk.text.strip()
-                        if not text:
-                            continue
-                            
-                        # Write subtitle entry
-                        f.write(f"{start_time} --> {end_time}\n")
-                        f.write(f"{text}\n\n")
-                        
-                        # Log every 50 segments to avoid spam
-                        if segment_count % 50 == 0:
-                            logger.info(f"Processed {segment_count} segments...")
-
-
-    return output_txt_file
-
-
-def save_translated_text(text, audio_filename=None, source_language="unknown", target_language="unknown"):
-    """
-    Save translated text with descriptive filename: transcript_translated_audiofilename_sourcelang_targetlang.vtt
-    """
-    output_directory = "../files"
-    os.makedirs(output_directory, exist_ok=True)
-    logger.info("Saving translated text to VTT file")
-    
-    # Create descriptive filename
-    if audio_filename:
-        # Remove file extension and "audio-" prefix if present
-        clean_name = audio_filename.replace("audio-", "").split('.')[0]
-        output_filename = f"translated_transcript_{clean_name}_{source_language}_{target_language}.vtt"
-    else:
-        output_filename = f"translated_transcript_unknown_{source_language}_{target_language}.vtt"
-    
-    output_txt_file = os.path.join(output_directory, output_filename)
-    
-    with open(output_txt_file, 'w', encoding='utf-8') as f:
-        f.write(text + "\n")
-        logger.info(f"Translated text file created at {output_txt_file}")
-    
-    return output_txt_file
-
-# print(transcribe_audio_to_text("./files/audio-Episode_8.wav"))
-
 
 
 def split_long_segment(segment, max_chars=150, max_duration=8.0):
@@ -196,5 +108,112 @@ def split_long_segment(segment, max_chars=150, max_duration=8.0):
     return new_segments
 
 
-# segments= transcribe_audio_to_text("../tests/chinese/video 2/audio-Episode 4.wav", language="zh", model_size="small", device="cpu")
-# print(segments)
+def format_timestamp(seconds):
+    logger.debug(f"Formatting timestamp for {seconds} seconds")
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    millis = int((seconds - int(seconds)) * 1000)
+    return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
+
+
+def save_transcription_to_txt(segments, audio_filename=None, language="unknown", max_chars_per_subtitle=150):
+    """
+    Enhanced save function with automatic splitting of long segments
+    """
+    logger.info("Saving transcription to VTT file with long sentence handling")
+    output_directory = "../files"
+    os.makedirs(output_directory, exist_ok=True)
+    
+    # Create descriptive filename
+    if audio_filename:
+        clean_name = audio_filename.replace("audio-", "").split('.')[0]
+        output_filename = f"transcript_{clean_name}_{language}.vtt"
+    else:
+        output_filename = f"transcript_unknown_{language}.vtt"
+    
+    output_txt_file = os.path.join(output_directory, output_filename)
+    
+    try:
+        with open(output_txt_file, 'w', encoding='utf-8', buffering=8192) as f:
+            f.write("WEBVTT\n\n")
+            logger.info(f"Transcription file created at {output_txt_file}")
+            
+            segment_count = 0
+            for segment in segments:
+                try:
+                    # Split long segments into manageable chunks
+                    segment_chunks = split_long_segment(segment, max_chars=max_chars_per_subtitle)
+                    
+                    for chunk in segment_chunks:
+                        segment_count += 1
+                        start_time = format_timestamp(chunk.start)
+                        end_time = format_timestamp(chunk.end)
+                        
+                        # Clean and validate text
+                        text = chunk.text.strip()
+                        if not text:
+                            continue
+                            
+                        # Write subtitle entry
+                        f.write(f"{start_time} --> {end_time}\n")
+                        f.write(f"{text}\n\n")
+                        
+                        # Log every 50 segments to avoid spam
+                        if segment_count % 50 == 0:
+                            logger.info(f"Processed {segment_count} segments...")
+                            
+                except Exception as e:
+                    logger.warning(f"Error processing segment: {e}")
+                    continue
+                    
+            logger.info(f"Successfully saved {segment_count} segments to {output_txt_file}")
+            
+    except Exception as e:
+        logger.error(f"Error saving transcription file: {e}")
+        raise
+    
+    return output_txt_file
+
+
+def save_translated_text(text, audio_filename=None, source_language="unknown", target_language="unknown"):
+    """
+    Enhanced save function with better error handling and memory management
+    """
+    output_directory = "../files"
+    os.makedirs(output_directory, exist_ok=True)
+    logger.info("Saving translated text to VTT file")
+    
+    # Create descriptive filename
+    if audio_filename:
+        clean_name = audio_filename.replace("audio-", "").split('.')[0]
+        output_filename = f"translated_transcript_{clean_name}_{source_language}_{target_language}.vtt"
+    else:
+        output_filename = f"translated_transcript_unknown_{source_language}_{target_language}.vtt"
+    
+    output_txt_file = os.path.join(output_directory, output_filename)
+    
+    try:
+        # Handle very large text files by writing in chunks
+        with open(output_txt_file, 'w', encoding='utf-8', buffering=8192) as f:
+            if isinstance(text, str):
+                # For very large strings, write in chunks
+                chunk_size = 8192  # 8KB chunks
+                for i in range(0, len(text), chunk_size):
+                    f.write(text[i:i+chunk_size])
+            else:
+                f.write(str(text))
+            f.write("\n")
+            
+        logger.info(f"Translated text file created at {output_txt_file}")
+        
+        # Verify file was written correctly
+        if os.path.exists(output_txt_file):
+            file_size = os.path.getsize(output_txt_file)
+            logger.info(f"File size: {file_size} bytes")
+        
+    except Exception as e:
+        logger.error(f"Error saving translated text: {e}")
+        raise
+    
+    return output_txt_file

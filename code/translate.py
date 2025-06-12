@@ -72,6 +72,7 @@ def translate_text(llm, text, target_language="english", source_language="japane
         chunk_of_subs = original_subtitles[i:i + chunk_size]
         
         texts_to_translate = [sub['text'] for sub in chunk_of_subs]
+        num_blocks_in_chunk = len(texts_to_translate)
         joined_text_for_prompt = separator.join(texts_to_translate)
 
         prompt = f"""

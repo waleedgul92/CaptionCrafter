@@ -42,26 +42,65 @@ def extract_audio(input_video, input_video_name):
 
 
 
-def transcribe_audio_to_text(audio_file , language="ja",model_size="tiny",device="cpu",compute_type="int8"): 
+def transcribe_audio_to_text(audio_file , language="ja",model_size="medium",device="cpu",compute_type="int8",max_duration=2.0): 
     
-    model_size = model_size
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
+    
+    # Crucially, enable word_timestamps to get precise timing for each word
     segments, info = model.transcribe(
         audio_file,
-        language = language  , # Specify the language code for Hindi
+        language=language,
         beam_size=5,
-        vad_filter=True,
-        task="transcribe", 
-        vad_parameters={"threshold": 0.5, "min_silence_duration_ms": 1000, }  ,# 1 sec silence
-        
+        word_timestamps=True,
+        task="transcribe"
     )
-    ## sgement => start , end , text
-    ## info => language, duration, num_segments, etc.
 
-    return segments
+    all_words = []
+    for segment in segments:
+        # segment.words is a generator of word objects, each with start, end, and word
+        all_words.extend(list(segment.words))
+
+    if not all_words:
+        return []
+
+    final_segments = []
+    current_words = []
+    current_start_time = all_words[0].start
+
+    for word in all_words:
+        # If adding the current word exceeds max_duration, finalize the previous segment
+        if current_words and (word.end - current_start_time > max_duration):
+            # Finalize the segment with the words collected so far
+            segment_text = "".join(w.word for w in current_words)
+            segment_end_time = current_words[-1].end
+            final_segments.append({
+                "start": current_start_time,
+                "end": segment_end_time,
+                "text": segment_text
+            })
+            
+            # Start a new segment with the current word
+            current_words = [word]
+            current_start_time = word.start
+        else:
+            # Otherwise, add the word to the current segment
+            current_words.append(word)
+
+    # Add the final remaining segment after the loop
+    if current_words:
+        segment_text = "".join(w.word for w in current_words)
+        segment_end_time = current_words[-1].end
+        final_segments.append({
+            "start": current_start_time,
+            "end": segment_end_time,
+            "text": segment_text
+        })
+        
+    return final_segments
 
 
-def split_long_segment(segment, max_chars=150, max_duration=8.0):
+
+def split_long_segment(segment, max_chars=40, max_duration=5.0):
     """
     Split long segments into smaller chunks based on character count and duration
     """
@@ -116,8 +155,7 @@ def format_timestamp(seconds):
     millis = int((seconds - int(seconds)) * 1000)
     return f"{hours:02}:{minutes:02}:{secs:02}.{millis:03}"
 
-
-def save_transcription_to_txt(segments, audio_filename=None, language="unknown", max_chars_per_subtitle=150):
+def save_transcription_to_txt(segments, audio_filename=None, language="unknown", max_chars_per_subtitle=30):
     """
     Enhanced save function with automatic splitting of long segments
     """
@@ -142,27 +180,33 @@ def save_transcription_to_txt(segments, audio_filename=None, language="unknown",
             segment_count = 0
             for segment in segments:
                 try:
-                    # Split long segments into manageable chunks
-                    segment_chunks = split_long_segment(segment, max_chars=max_chars_per_subtitle)
+                    # Handle both dictionary and object formats
+                    if isinstance(segment, dict):
+                        start_time_val = segment["start"]
+                        end_time_val = segment["end"]
+                        text_val = segment["text"]
+                    else:
+                        start_time_val = segment.start
+                        end_time_val = segment.end
+                        text_val = segment.text
                     
-                    for chunk in segment_chunks:
-                        segment_count += 1
-                        start_time = format_timestamp(chunk.start)
-                        end_time = format_timestamp(chunk.end)
+                    segment_count += 1
+                    start_time = format_timestamp(start_time_val)
+                    end_time = format_timestamp(end_time_val)
+                    
+                    # Clean and validate text
+                    text = text_val.strip()
+                    if not text:
+                        continue
                         
-                        # Clean and validate text
-                        text = chunk.text.strip()
-                        if not text:
-                            continue
-                            
-                        # Write subtitle entry
-                        f.write(f"{start_time} --> {end_time}\n")
-                        f.write(f"{text}\n\n")
+                    # Write subtitle entry
+                    f.write(f"{start_time} --> {end_time}\n")
+                    f.write(f"{text}\n\n")
+                    
+                    # Log every 50 segments to avoid spam
+                    if segment_count % 50 == 0:
+                        logger.info(f"Processed {segment_count} segments...")
                         
-                        # Log every 50 segments to avoid spam
-                        if segment_count % 50 == 0:
-                            logger.info(f"Processed {segment_count} segments...")
-                            
                 except Exception as e:
                     logger.warning(f"Error processing segment: {e}")
                     continue
@@ -174,7 +218,6 @@ def save_transcription_to_txt(segments, audio_filename=None, language="unknown",
         raise
     
     return output_txt_file
-
 
 def save_translated_text(text, audio_filename=None, source_language="unknown", target_language="unknown"):
     """

@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Subtitle Generator</title>
+  <title>CaptionCrafter</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="container">
-    <h1>🎬 Subtitle Generator</h1>
+    <h1>🎬 CaptionCrafter</h1>
 
     <div class="card">
 <label for="videoUpload" class="upload-button">📤 Upload Video</label>
@@ -22,7 +22,6 @@
       <select id="sourceLang">
         <option value="">-- Select Source --</option>
         <option value="english">English</option>
-        <option value="hindi">Hindi</option>
         <option value="german">German</option>
         <option value="chinese">Chinese</option>
         <option value="korean">Korean</option>
@@ -35,11 +34,17 @@
       <select id="targetLang">
         <option value="">-- Select Target --</option>
         <option value="english">English</option>
-        <option value="hindi">Hindi</option>
-        <option value="german">German</option>
-        <option value="chinese">Chinese</option>
-        <option value="korean">Korean</option>
-        <option value="japanese">Japanese</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <label class="lang-label" for="modelOption">🧠 Model Option</label>
+      <select id="modelOption">
+        <option value="">-- Select Model --</option>
+        <option value="tiny">tiny</option>
+        <option value="base">base</option>
+        <option value="small">small</option>
+        <option value="medium">medium</option>
       </select>
     </div>
 

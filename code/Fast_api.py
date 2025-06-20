@@ -14,65 +14,70 @@ import glob
 import atexit
 from pathlib import Path
 
+# Assuming these are in your project structure
 from transcribe import extract_audio, transcribe_audio_to_text, save_transcription_to_txt, save_translated_text
 from model import load_gemini_model
-llm = load_gemini_model()
-from translate import translate_text
+llm = load_gemini_model() # Make sure 'model.py' exists and load_gemini_model works
+from translate import translate_text # Make sure 'translate.py' exists and translate_text works
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Pydantic BaseModels for request/response validation
 class AudioExtractionResponse(BaseModel):
-    extracted_audio_path: str
-    message: str = "Audio extracted successfully"
+    extracted_audio_path: str = Field(..., description="The file path where the extracted audio is saved on the server.")
+    message: str = Field("Audio extracted successfully", description="A confirmation message for successful audio extraction.")
 
 class TranscriptionRequest(BaseModel):
-    language: str = Field(default="ja", description="Language code for transcription")
-    model_size: str = Field(default="tiny", description="Whisper model size")
-    device: str = Field(default="cpu", description="Device to use for processing")
-    compute_type: str = Field(default="int8", description="Compute type for processing")
+    language: str = Field(default="ja", description="The language code (e.g., 'en', 'ja', 'de') for the audio to be transcribed. This helps Whisper select the correct language model.")
+    model_size: str = Field(default="tiny", description="The size of the Whisper model to use for transcription. Smaller models are faster but less accurate, larger models are slower but more accurate. Options include: 'tiny', 'base', 'small', 'medium'.")
+    device: str = Field(default="cpu", description="The computing device to use for transcription. 'cpu' for CPU processing, 'cuda' for NVIDIA GPUs.")
+    compute_type: str = Field(default="int8", description="The computation type for the model. 'int8' for integer 8-bit, 'float16' for half-precision floating-point, 'float32' for full-precision floating-point. 'int8' is generally faster but might slightly reduce accuracy.")
 
 class TranscriptionResponse(BaseModel):
-    description: str
-    transcript_path: str
-    message: str = "Transcription completed successfully"
+    description: str = Field(..., description="A detailed description of the transcription process outcome.")
+    transcript_path: str = Field(..., description="The file path where the generated transcript (VTT format) is saved on the server.")
+    message: str = Field("Transcription completed successfully", description="A confirmation message for successful transcription.")
 
 class TranslationRequest(BaseModel):
-    source_language: str = Field(..., description="Source language for translation")
-    target_language: str = Field(..., description="Target language for translation")
+    source_language: str = Field(..., description="The original language of the input text (e.g., 'English', 'Japanese').")
+    target_language: str = Field(..., description="The language into which the text should be translated (e.g., 'English', 'German').")
 
 class TranslationResponse(BaseModel):
-    description: str
-    output_file: str
-    message: str = "Translation completed successfully"
+    description: str = Field(..., description="A detailed description of the translation process outcome.")
+    output_file: str = Field(..., description="The file path where the translated subtitle (VTT format) is saved on the server.")
+    message: str = Field("Translation completed successfully", description="A confirmation message for successful translation.")
 
 class FileDownloadResponse(BaseModel):
-    filename: str
-    file_path: str
-    file_size: int
+    filename: str = Field(..., description="The name of the file being downloaded.")
+    file_path: str = Field(..., description="The server-side path to the file.")
+    file_size: int = Field(..., description="The size of the file in bytes.")
 
 class ErrorResponse(BaseModel):
-    error: str
-    detail: str
-    status_code: int
+    error: str = Field(..., description="A brief error message indicating the type of error.")
+    detail: str = Field(..., description="Detailed information about the error.")
+    status_code: int = Field(..., description="The HTTP status code associated with the error.")
 
 class CleanupResponse(BaseModel):
-    message: str
-    cleaned_files: List[str]
-    files_count: int
+    message: str = Field(..., description="A summary message about the cleanup operation.")
+    cleaned_files: List[str] = Field(..., description="A list of file paths that were successfully removed during cleanup.")
+    files_count: int = Field(..., description="The total number of files that were attempted to be cleaned up.")
 
 app = FastAPI(
-    title="Subtitle Generator API",
-    description="API for generating subtitles from video files using Whisper ASR with automatic cleanup.",
+    title="CaptionCrafter API",
+    description="""
+    This API provides functionality to generate subtitles from video files.
+    It integrates Whisper ASR for transcription and a large language model (LLM) for translation.
+    Automatic cleanup of intermediate files is handled to manage server storage.
+    """,
     version="2.0.0"
 )
 
 origins = [
     "http://localhost",
     "http://localhost:8080",
-    "http://localhost:63342",
-    "null",
+    "http://localhost:63342", # Often used by PyCharm's live server
+    "null", # For local file testing in some browsers
 ]
 
 app.add_middleware(
@@ -90,13 +95,16 @@ current_translated_path = None
 intermediate_files = set()  # Track all intermediate files for cleanup
 
 def add_to_cleanup(file_path: str):
-    """Add a file to the cleanup tracking set"""
+    """Adds a file path to a set of intermediate files to be cleaned up later."""
     if file_path and os.path.exists(file_path):
         intermediate_files.add(file_path)
         logger.info(f"Added to cleanup tracking: {file_path}")
 
 def cleanup_intermediate_files() -> CleanupResponse:
-    """Clean up all tracked intermediate files"""
+    """
+    Cleans up all tracked intermediate files and any other temporary files
+    residing in the designated 'files' directory.
+    """
     cleaned_files = []
     
     # Clean tracked intermediate files
@@ -114,7 +122,7 @@ def cleanup_intermediate_files() -> CleanupResponse:
     # Clean up any remaining files in the files directory that match our patterns
     files_dir = Path("../files")
     if files_dir.exists():
-        patterns = ["audio-*.wav", "transcript_*.vtt"]
+        patterns = ["audio-*.wav", "transcript_*.vtt", "transcript_translated_*.vtt"] # Include translated files
         for pattern in patterns:
             for file_path in files_dir.glob(pattern):
                 try:
@@ -131,8 +139,11 @@ def cleanup_intermediate_files() -> CleanupResponse:
         files_count=len(cleaned_files)
     )
 
-@app.post("/extract_audio", response_model=AudioExtractionResponse)
-async def extract_audio_endpoint(video_file: UploadFile = File(...)):
+@app.post("/extract_audio", response_model=AudioExtractionResponse, summary="Extract Audio from Video",
+          description="Uploads a video file and extracts its audio content, saving it as a WAV file. The path to the extracted audio is returned for subsequent transcription.")
+async def extract_audio_endpoint(
+    video_file: UploadFile = File(..., description="The video file (e.g., MP4, MKV, TS, MOV) from which to extract audio.")
+):
     """
     Endpoint to extract audio from a video file and return the path to the extracted audio.
     """
@@ -162,16 +173,18 @@ async def extract_audio_endpoint(video_file: UploadFile = File(...)):
         logger.error(f"Error extracting audio: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/transcribe_audio", response_model=TranscriptionResponse)
+@app.post("/transcribe_audio", response_model=TranscriptionResponse, summary="Transcribe Audio to Text",
+          description="Transcribes an audio file into text using the specified Whisper ASR model. The resulting transcript is saved as a VTT file.")
 async def transcribe_audio_endpoint(
-    audio_file: UploadFile = File(...),
-    language: str = "ja",
-    model_size: str = "tiny",
-    device: str = "cpu",
-    compute_type: str = "int8",
+    audio_file: UploadFile = File(..., description="The audio file to be transcribed. This is typically the output from the `/extract_audio` endpoint."),
+    language: str = Form("ja", description="The language of the audio content. E.g., 'en' for English, 'ja' for Japanese, 'de' for German."),
+    model_size: str = Form("small", description="The size of the Whisper model to use for transcription. Available options: 'tiny', 'base', 'small', 'medium'."),
+    device: str = Form("cpu", description="The computing device for transcription. 'cpu' for CPU, 'cuda' for GPU."),
+    compute_type: str = Form("int8", description="The precision for computations. 'int8' (integer 8-bit) for faster processing, 'float16' (half-precision) for balanced performance, 'float32' (full-precision) for maximum accuracy.")
 ):
     """
     Endpoint to transcribe audio to text using Whisper ASR.
+    You can select from 'tiny', 'base', 'small', or 'medium' models for transcription.
     """
     global current_transcript_path, current_audio_filename
     try:
@@ -182,7 +195,7 @@ async def transcribe_audio_endpoint(
             with open(input_audio_path, "wb") as f:
                 shutil.copyfileobj(audio_file.file, f)
 
-            # Transcribe the audio file
+            # Transcribe the audio file, passing the model_size
             segments = transcribe_audio_to_text(input_audio_path, language, model_size, device, compute_type)
 
             # Save transcription with descriptive filename
@@ -204,11 +217,12 @@ async def transcribe_audio_endpoint(
         logger.error(f"Error transcribing audio: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/translate_text", response_model=TranslationResponse)
+@app.post("/translate_text", response_model=TranslationResponse, summary="Translate Transcript Text",
+          description="Translates the content of a VTT transcript file from a source language to a target language using a large language model (LLM). The translated text is saved as a new VTT file.")
 async def translate_text_endpoint(
-    input_file: UploadFile = File(...),
-    source_language: str = Form(...),
-    target_language: str = Form(...),
+    input_file: UploadFile = File(..., description="The input VTT transcript file to be translated."),
+    source_language: str = Form(..., description="The original language of the text in the input file (e.g., 'English', 'Japanese')."),
+    target_language: str = Form(..., description="The desired language for the translated output (e.g., 'English', 'German')."),
 ):
     """
     Endpoint to translate text from source to target language.
@@ -224,9 +238,12 @@ async def translate_text_endpoint(
                 shutil.copyfileobj(input_file.file, f_write)
 
             # Read the file
-            with open(temp_file_path, "r", encoding="utf-8") as f_read:
+            raw_data = open(temp_file_path, 'rb').read()
+            result = chardet.detect(raw_data)
+            encoding = result['encoding'] if result['encoding'] else 'utf-8'
+            
+            with open(temp_file_path, "r", encoding=encoding) as f_read:
                 text_from_file = f_read.read()
-
 
         translated_text, current_translated_path = translate_text(
             llm, 
@@ -239,7 +256,6 @@ async def translate_text_endpoint(
             raise HTTPException(status_code=500, detail="Translation failed")
 
         # Add translated file to cleanup tracking (but don't clean it immediately as user needs to download)
-        # We'll clean it up only on explicit cleanup or app shutdown
         add_to_cleanup(current_translated_path)
 
         return TranslationResponse(
@@ -252,7 +268,8 @@ async def translate_text_endpoint(
         logger.error(f"Error translating text: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/download_transcript")
+@app.get("/download_transcript", summary="Download Original Transcript",
+         description="Downloads the most recently generated original transcript file (VTT format) from the server. This file contains the text transcribed from the audio.")
 async def download_transcript():
     """
     Endpoint to download the most recent generated transcript file.
@@ -284,7 +301,8 @@ async def download_transcript():
         logger.error(f"Error downloading transcript: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/download_translated_subtitle")
+@app.get("/download_translated_subtitle", summary="Download Translated Subtitle",
+         description="Downloads the most recently generated translated subtitle file (VTT format) from the server. This file contains the translated text.")
 async def download_translated_subtitle():
     """
     Endpoint to download the most recent translated subtitle file.
@@ -316,7 +334,8 @@ async def download_translated_subtitle():
         logger.error(f"Error downloading translated subtitle: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/cleanup", response_model=CleanupResponse)
+@app.post("/cleanup", response_model=CleanupResponse, summary="Clean Up Intermediate Files",
+          description="Triggers an immediate cleanup of all intermediate audio and transcript files generated by the API to free up server space.")
 async def cleanup_files():
     """
     Endpoint to manually trigger cleanup of intermediate files.
@@ -329,19 +348,21 @@ async def cleanup_files():
         logger.error(f"Error during cleanup: {e}")
         raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
 
-@app.get("/health")
+@app.get("/health", summary="API Health Check",
+         description="Provides a status check for the API, indicating if it's running, if the LLM is loaded, and the count of intermediate files being tracked.")
 async def health_check():
     """
     Health check endpoint to verify API status.
     """
     return {
         "status": "healthy",
-        "message": "Subtitle Generator API is running",
+        "message": "CaptionCrafter API is running",
         "llm_loaded": llm is not None,
         "intermediate_files_count": len(intermediate_files)
     }
 
-@app.get("/files/status")
+@app.get("/files/status", summary="Get Server File Status",
+         description="Retrieves information about files currently managed by the API, including current audio, transcript, translated file paths, and a list of all existing files in the temporary directory along with their cleanup status.")
 async def files_status():
     """
     Get status of current files and cleanup tracking.
@@ -368,21 +389,20 @@ async def files_status():
         "files_directory": str(files_dir)
     }
 
-# # Register cleanup function to run on app shutdown
-# @app.on_event("shutdown")
-# async def shutdown_event():
-#     """
-#     Cleanup intermediate files when the application shuts down.
-#     """
-#     logger.info("Application shutting down, cleaning up intermediate files...")
-#     try:
-#         result = cleanup_intermediate_files()
-#         logger.info(f"Shutdown cleanup completed: {result.message}")
-#     except Exception as e:
-#         logger.error(f"Error during shutdown cleanup: {e}")
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Cleanup intermediate files when the application shuts down.
+    """
+    logger.info("Application shutting down, cleaning up intermediate files...")
+    try:
+        result = cleanup_intermediate_files()
+        logger.info(f"Shutdown cleanup completed: {result.message}")
+    except Exception as e:
+        logger.error(f"Error during shutdown cleanup: {e}")
 
-# # Also register cleanup for when the process exits
-# atexit.register(lambda: cleanup_intermediate_files())
+# Also register cleanup for when the process exits (for cases where FastAPI might not cleanly shut down)
+atexit.register(lambda: cleanup_intermediate_files())
 
 if __name__ == "__main__":
     # Run the FastAPI app with Uvicorn

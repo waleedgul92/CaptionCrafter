@@ -7,13 +7,13 @@ const fileNameDisplay = document.getElementById('fileName');
 const statusDisplay = document.getElementById('status');
 const sourceLangSelect = document.getElementById('sourceLang');
 const targetLangSelect = document.getElementById('targetLang');
+const modelOptionSelect = document.getElementById('modelOption'); // Get the new model select element
 const downloadBtn = document.getElementById('downloadBtn');
 
 const API_BASE_URL = 'http://localhost:8000';
 
 const languageCodeMap = {
   "english": "en",
-  "hindi": "hi",
   "german": "de",
   "chinese": "zh",
   "korean": "ko",
@@ -27,6 +27,7 @@ if (!fileNameDisplay) console.error("Error: Element with ID 'fileName' not found
 if (!statusDisplay) console.error("Error: Element with ID 'status' not found.");
 if (!sourceLangSelect) console.error("Error: Element with ID 'sourceLang' not found.");
 if (!targetLangSelect) console.error("Error: Element with ID 'targetLang' not found.");
+if (!modelOptionSelect) console.error("Error: Element with ID 'modelOption' not found."); // Check for model select
 if (!downloadBtn) console.error("Error: Element with ID 'downloadBtn' not found.");
 
 // Health check on page load
@@ -45,6 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateStatus('⚠️ Warning: Cannot connect to API server.', 'warning');
   }
 });
+
 
 if (fileInput) {
   fileInput.addEventListener('change', () => {
@@ -97,6 +99,12 @@ if (generateBtn) {
         return;
     }
 
+    const selectedModelValue = modelOptionSelect.value; // Get the selected model
+    if (!selectedModelValue) {
+        updateStatus('❌ Please select a model option.', 'error');
+        return;
+    }
+
     const languageCodeForTranscription = languageCodeMap[selectedSourceLangValue.toLowerCase()];
     if (!languageCodeForTranscription) {
         updateStatus(`❌ Transcription language code not found for "${selectedSourceLangValue}".`, 'error');
@@ -135,6 +143,7 @@ if (generateBtn) {
       const formDataTranscribe = new FormData();
       formDataTranscribe.append('audio_file', selectedFile);
       formDataTranscribe.append('language', languageCodeForTranscription);
+      formDataTranscribe.append('model', selectedModelValue); // Append the selected model here
       
       const transcribeResponse = await fetch(`${API_BASE_URL}/transcribe_audio`, {
         method: 'POST',
@@ -172,7 +181,7 @@ if (generateBtn) {
 
       const formDataTranslate = new FormData();
       formDataTranslate.append('input_file', transcriptFile);
-      formDataTranslate.append('source_language', sourceLangForTranslation);  
+      formDataTranslate.append('source_language', sourceLangForTranslation);    
       formDataTranslate.append('target_language', targetLangForTranslation);
 
       const translateResponse = await fetch(`${API_BASE_URL}/translate_text`, {

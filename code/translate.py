@@ -1,14 +1,15 @@
 import logging
 import time
+import re
 from transcribe import save_translated_text # Assuming this is in transcribe.py
-from model import load_gemini_model       # Assuming this is in model.py
+from model import load_gemini_model      # Assuming this is in model.py
 
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
-# --- Helper Functions ---
+# --- Helper Functions (No Changes) ---
 def parse_vtt(vtt_content):
     """
     Parses VTT content into a list of dictionaries, each with 'timestamp' and 'text'.
@@ -36,21 +37,22 @@ def reconstruct_vtt(subtitles):
         content += f"{sub['timestamp']}\n{sub['text']}\n\n"
     return content.strip()
 
+def clean_translation(text):
+    """
+    Removes unwanted artifacts and parenthetical explanations from translated text.
+    """
+    text = re.sub(r'\s*\([^)]*\)$', '', text.strip())
+    return text.strip()
 
-# --- Main Translation Function (with Chunking & Retries) ---
+
+# --- Main Translation Function ---
 def translate_text(llm, text, target_language="english", source_language="japanese", audio_filename=None, chunk_size=50, max_retries=3):
     """
-    Translates VTT content robustly by processing it in smaller chunks
-    and retrying failed chunks. The function signature is compatible
-    with existing applications.
+    Translates VTT content robustly using an adaptive chunking strategy.
     """
     if not llm:
         logger.error("Translation model is not available.")
         return "Translation model is not available.", None
-
-    if not text:
-        logger.error("No text provided for translation.")
-        return "No text provided for translation.", None
 
     try:
         original_subtitles = parse_vtt(text)
@@ -62,90 +64,110 @@ def translate_text(llm, text, target_language="english", source_language="japane
         return f"Failed to parse VTT file: {e}", None
 
     llm_with_temp = llm.with_config(configurable={'temperature': 0.1})
-    separator = "\n<--->\n"
     all_processed_subs = []
 
-    logger.info(f"Starting translation of {len(original_subtitles)} blocks in chunks of {chunk_size}...")
+    logger.info(f"Starting translation of {len(original_subtitles)} blocks in chunks up to {chunk_size}...")
 
-    for i in range(0, len(original_subtitles), chunk_size):
-        current_chunk_number = i // chunk_size + 1
-        chunk_of_subs = original_subtitles[i:i + chunk_size]
+    # --- NEW: Internal recursive translation function ---
+    def _translate_chunk_recursively(chunk_of_subs):
+        """
+        Translates a given chunk. If it fails, splits the chunk in half and retries on each half.
+        Returns the translated chunk or the original if all attempts fail.
+        """
+        num_blocks_in_chunk = len(chunk_of_subs)
         
-        texts_to_translate = [sub['text'] for sub in chunk_of_subs]
-        num_blocks_in_chunk = len(texts_to_translate)
-        joined_text_for_prompt = separator.join(texts_to_translate)
+        # Base case: If the chunk is empty or invalid, return it as is.
+        if num_blocks_in_chunk == 0:
+            return []
+        
+        # Base case: For a single line, do a simple, robust translation.
+        if num_blocks_in_chunk == 1:
+            try:
+                # Use a simpler prompt for single lines to be safe
+                single_prompt = f"Translate the following text from {source_language} to {target_language}. Do not add comments. TEXT: {chunk_of_subs[0]['text']}"
+                response = llm_with_temp.invoke(single_prompt)
+                translated_text = clean_translation(response.content)
+                chunk_of_subs[0]['text'] = translated_text
+                return chunk_of_subs
+            except Exception as e:
+                logger.error(f"Failed to translate single line: {chunk_of_subs[0]['text']}. Error: {e}")
+                return chunk_of_subs # Return original on error
 
+        separator = "\n<--->\n"
+        texts_to_translate = [sub['text'] for sub in chunk_of_subs]
+        joined_text_for_prompt = separator.join(texts_to_translate)
+        
         prompt = f"""
-        You are a machine translation service. Your only function is to translate {source_language} text to {target_language}.
-        Follow these rules exactly:
-        1. The input contains multiple text blocks separated by '{separator}'.
-        2. Translate each text block individually.
-        3. Your output MUST contain the exact same number of blocks as the input, separated by the same '{separator}'.
-        4. NEVER merge blocks. NEVER omit blocks.
-        5. If an input block is just punctuation (e.g., "..."), return it exactly as is.
-        6. Preserve HTML tags like <i>...</i>.
+        You are an expert subtitle translator. Your task is to translate a batch of subtitles from {source_language} to {target_language}.
+        Follow these rules precisely:
+        1. The input below is a series of text blocks separated by a specific marker: '{separator}'.
+        2. Translate the content of each block into {target_language}.
+        3. Your output MUST contain the exact same number of blocks ({num_blocks_in_chunk}), separated by the same '{separator}' marker.
+        4. NEVER merge or omit any blocks. The block count must match perfectly.
+        5. Preserve all original HTML tags like <i>...</i>.
+        6. Do not add any extra text, explanations, or comments.
 
         INPUT TEXT:
         {joined_text_for_prompt}
 
         OUTPUT TEXT:
         """
-        
-        # --- Retry Logic ---
-        translation_succeeded = False
-        for attempt in range(max_retries + 1):
-            if attempt > 0:
-                logger.warning(f"Retrying translation for chunk {current_chunk_number} (Attempt {attempt + 1}/{max_retries + 1})...")
-                time.sleep(2)
-            
-            logger.info(f"Translating chunk {current_chunk_number}, attempt {attempt + 1}...")
 
+        for attempt in range(max_retries):
             try:
+                logger.info(f"Attempting to translate a chunk of size {num_blocks_in_chunk} (Attempt {attempt + 1}/{max_retries})")
                 response = llm_with_temp.invoke(prompt)
                 translated_blob = response.content
-                
-                if not translated_blob:
-                    logger.error(f"API call for chunk {current_chunk_number} returned empty content (possible safety block). This cannot be retried.")
-                    translation_succeeded = False
-                    break 
+
+                if not translated_blob or not translated_blob.strip():
+                     raise ValueError("API call returned empty content.")
 
                 translated_texts = translated_blob.split(separator)
 
-                if len(translated_texts) != len(chunk_of_subs):
-                    logger.warning(f"Attempt {attempt + 1} failed: Mismatched line count (got {len(translated_texts)}, expected {len(chunk_of_subs)}).")
-                    continue
-
-                logger.info(f"Chunk {current_chunk_number} translated successfully on attempt {attempt + 1}.")
-                for j, sub in enumerate(chunk_of_subs):
-                    sub['text'] = translated_texts[j].strip()
-                
-                all_processed_subs.extend(chunk_of_subs)
-                translation_succeeded = True
-                break
-
-            except Exception as e:
-                logger.error(f"A critical error occurred on attempt {attempt + 1} for chunk {current_chunk_number}: {e}")
-        
-        if not translation_succeeded:
-            logger.error(f"Chunk {current_chunk_number} failed after all attempts. Reverting to original text.")
-            all_processed_subs.extend(chunk_of_subs)
+                if len(translated_texts) == num_blocks_in_chunk:
+                    logger.info(f"Successfully translated chunk of size {num_blocks_in_chunk}.")
+                    for j, sub in enumerate(chunk_of_subs):
+                        sub['text'] = clean_translation(translated_texts[j])
+                    return chunk_of_subs # Success!
+                else:
+                    logger.warning(f"Mismatched line count in chunk of size {num_blocks_in_chunk} (got {len(translated_texts)}).")
+                    continue # Try again
             
-        time.sleep(1)
+            except Exception as e:
+                logger.error(f"Error on attempt {attempt + 1} for chunk of {num_blocks_in_chunk}: {e}")
+                time.sleep(1)
+
+        # --- DIVIDE AND CONQUER ---
+        logger.warning(f"Chunk of size {num_blocks_in_chunk} failed all retries. Splitting it.")
+        mid_point = num_blocks_in_chunk // 2
+        first_half = chunk_of_subs[:mid_point]
+        second_half = chunk_of_subs[mid_point:]
+
+        # Recursively process each half and combine the results
+        translated_first_half = _translate_chunk_recursively(first_half)
+        translated_second_half = _translate_chunk_recursively(second_half)
+        
+        return translated_first_half + translated_second_half
+
+    # --- Main Loop ---
+    for i in range(0, len(original_subtitles), chunk_size):
+        chunk = original_subtitles[i:i + chunk_size]
+        logger.info(f"--- Processing main chunk starting at block {i+1} ---")
+        
+        processed_chunk = _translate_chunk_recursively(chunk)
+        all_processed_subs.extend(processed_chunk)
+        
+        time.sleep(1) # Rate limit between main chunks
 
     logger.info(f"All chunks processed. Final list contains {len(all_processed_subs)} blocks.")
     
     try:
         final_vtt = reconstruct_vtt(all_processed_subs)
-        
-        logger.info("Saving translated file...")
         output_path = save_translated_text(
-            final_vtt,
-            audio_filename=audio_filename,
-            source_language=source_language,
-            target_language=target_language
+            final_vtt, audio_filename, source_language, target_language
         )
-        logger.info(f"Translation and reconstruction completed successfully. File saved to: {output_path}")
+        logger.info(f"Translation complete. File saved to: {output_path}")
         return final_vtt, output_path
     except Exception as e:
-        logger.error(f"A fatal error occurred during final file reconstruction or saving: {e}", exc_info=True)
+        logger.error(f"Fatal error during file saving: {e}", exc_info=True)
         return "Failed during final file creation.", None

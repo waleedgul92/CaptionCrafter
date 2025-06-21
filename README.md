@@ -1,1 +1,1 @@
-# Universal-Subtitle-Generator
+# CaptionCrafter

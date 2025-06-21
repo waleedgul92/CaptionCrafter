@@ -12,6 +12,7 @@ import os
 import tempfile
 import glob
 import atexit
+import asyncio
 from pathlib import Path
 
 # Assuming these are in your project structure
@@ -94,13 +95,13 @@ current_transcript_path = None
 current_translated_path = None
 intermediate_files = set()  # Track all intermediate files for cleanup
 
-def add_to_cleanup(file_path: str):
+async def add_to_cleanup(file_path: str):
     """Adds a file path to a set of intermediate files to be cleaned up later."""
-    if file_path and os.path.exists(file_path):
+    if file_path and await asyncio.to_thread(os.path.exists, file_path):
         intermediate_files.add(file_path)
         logger.info(f"Added to cleanup tracking: {file_path}")
 
-def cleanup_intermediate_files() -> CleanupResponse:
+async def cleanup_intermediate_files() -> CleanupResponse:
     """
     Cleans up all tracked intermediate files and any other temporary files
     residing in the designated 'files' directory.
@@ -110,8 +111,8 @@ def cleanup_intermediate_files() -> CleanupResponse:
     # Clean tracked intermediate files
     for file_path in list(intermediate_files):
         try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            if await asyncio.to_thread(os.path.exists, file_path):
+                await asyncio.to_thread(os.remove, file_path)
                 cleaned_files.append(file_path)
                 logger.info(f"Cleaned up intermediate file: {file_path}")
         except Exception as e:
@@ -121,13 +122,13 @@ def cleanup_intermediate_files() -> CleanupResponse:
     
     # Clean up any remaining files in the files directory that match our patterns
     files_dir = Path("../files")
-    if files_dir.exists():
+    if await asyncio.to_thread(files_dir.exists):
         patterns = ["audio-*.wav", "transcript_*.vtt", "transcript_translated_*.vtt"] # Include translated files
         for pattern in patterns:
-            for file_path in files_dir.glob(pattern):
+            for file_path in await asyncio.to_thread(files_dir.glob, pattern):
                 try:
-                    if file_path.exists():
-                        file_path.unlink()
+                    if await asyncio.to_thread(file_path.exists):
+                        await asyncio.to_thread(file_path.unlink)
                         cleaned_files.append(str(file_path))
                         logger.info(f"Cleaned up pattern file: {file_path}")
                 except Exception as e:
@@ -138,6 +139,25 @@ def cleanup_intermediate_files() -> CleanupResponse:
         cleaned_files=cleaned_files,
         files_count=len(cleaned_files)
     )
+
+async def save_uploaded_file(uploaded_file: UploadFile, file_path: str):
+    """Async helper to save uploaded file."""
+    with open(file_path, "wb") as f:
+        while chunk := await uploaded_file.read(8192):  # Read in chunks to avoid memory issues
+            f.write(chunk)
+    await uploaded_file.seek(0)  # Reset file pointer for potential reuse
+
+async def read_file_with_encoding_detection(file_path: str) -> str:
+    """Async helper to read file with encoding detection."""
+    raw_data = await asyncio.to_thread(open(file_path, 'rb').read)
+    result = await asyncio.to_thread(chardet.detect, raw_data)
+    encoding = result['encoding'] if result['encoding'] else 'utf-8'
+    
+    def _read_file():
+        with open(file_path, "r", encoding=encoding) as f:
+            return f.read()
+    
+    return await asyncio.to_thread(_read_file)
 
 @app.post("/extract_audio", response_model=AudioExtractionResponse, summary="Extract Audio from Video",
           description="Uploads a video file and extracts its audio content, saving it as a WAV file. The path to the extracted audio is returned for subsequent transcription.")
@@ -153,16 +173,15 @@ async def extract_audio_endpoint(
             input_video_path = os.path.join(temp_dir, video_file.filename)
             
             # Save the uploaded video file to the temporary directory
-            with open(input_video_path, "wb") as f:
-                shutil.copyfileobj(video_file.file, f)
+            await save_uploaded_file(video_file, input_video_path)
 
             # Extract audio from the video file
             video_name = os.path.splitext(video_file.filename)[0]
-            extracted_audio_path = extract_audio(input_video_path, video_name)
+            extracted_audio_path = await asyncio.to_thread(extract_audio, input_video_path, video_name)
             
             # Store the audio filename for later use and add to cleanup tracking
             current_audio_filename = os.path.basename(extracted_audio_path)
-            add_to_cleanup(extracted_audio_path)
+            await add_to_cleanup(extracted_audio_path)
             
             return AudioExtractionResponse(
                 extracted_audio_path=extracted_audio_path,
@@ -192,21 +211,21 @@ async def transcribe_audio_endpoint(
             input_audio_path = os.path.join(temp_dir, audio_file.filename)
             
             # Save the uploaded audio file to the temporary directory
-            with open(input_audio_path, "wb") as f:
-                shutil.copyfileobj(audio_file.file, f)
+            await save_uploaded_file(audio_file, input_audio_path)
 
             # Transcribe the audio file, passing the model_size
-            segments = transcribe_audio_to_text(input_audio_path, language, model_size, device, compute_type)
+            segments = await asyncio.to_thread(transcribe_audio_to_text, input_audio_path, language, model_size, device, compute_type)
 
             # Save transcription with descriptive filename
-            current_transcript_path = save_transcription_to_txt(
+            current_transcript_path = await asyncio.to_thread(
+                save_transcription_to_txt,
                 segments, 
                 audio_filename=audio_file.filename or current_audio_filename,
                 language=language
             )
             
             # Add transcript to cleanup tracking
-            add_to_cleanup(current_transcript_path)
+            await add_to_cleanup(current_transcript_path)
             
             return TranscriptionResponse(
                 description="Transcription file saved successfully.",
@@ -229,23 +248,17 @@ async def translate_text_endpoint(
     """
     global current_translated_path, current_audio_filename
     try:
-        text_from_file = ""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_file_path = os.path.join(temp_dir, input_file.filename or "uploaded_text_file.vtt")
             
             # Save uploaded file
-            with open(temp_file_path, "wb") as f_write:
-                shutil.copyfileobj(input_file.file, f_write)
+            await save_uploaded_file(input_file, temp_file_path)
 
-            # Read the file
-            raw_data = open(temp_file_path, 'rb').read()
-            result = chardet.detect(raw_data)
-            encoding = result['encoding'] if result['encoding'] else 'utf-8'
-            
-            with open(temp_file_path, "r", encoding=encoding) as f_read:
-                text_from_file = f_read.read()
+            # Read the file with encoding detection
+            text_from_file = await read_file_with_encoding_detection(temp_file_path)
 
-        translated_text, current_translated_path = translate_text(
+        translated_text, current_translated_path = await asyncio.to_thread(
+            translate_text,
             llm, 
             text_from_file, 
             target_language, 
@@ -256,7 +269,7 @@ async def translate_text_endpoint(
             raise HTTPException(status_code=500, detail="Translation failed")
 
         # Add translated file to cleanup tracking (but don't clean it immediately as user needs to download)
-        add_to_cleanup(current_translated_path)
+        await add_to_cleanup(current_translated_path)
 
         return TranslationResponse(
             description="Translation file saved successfully.",
@@ -277,17 +290,17 @@ async def download_transcript():
     global current_transcript_path
     try:
         # If we have a current transcript path, use it
-        if current_transcript_path and os.path.exists(current_transcript_path):
+        if current_transcript_path and await asyncio.to_thread(os.path.exists, current_transcript_path):
             transcript_path = current_transcript_path
         else:
             # Fallback: look for the most recent transcript file
-            transcript_files = glob.glob("../files/transcript_*.vtt")
+            transcript_files = await asyncio.to_thread(glob.glob, "../files/transcript_*.vtt")
             if not transcript_files:
                 raise HTTPException(status_code=404, detail="No transcript file found")
             # Get the most recently created file
-            transcript_path = max(transcript_files, key=os.path.getctime)
+            transcript_path = await asyncio.to_thread(max, transcript_files, key=os.path.getctime)
         
-        if not os.path.exists(transcript_path):
+        if not await asyncio.to_thread(os.path.exists, transcript_path):
             raise HTTPException(status_code=404, detail="Transcript file not found")
         
         filename = os.path.basename(transcript_path)
@@ -310,17 +323,17 @@ async def download_translated_subtitle():
     global current_translated_path
     try:
         # If we have a current translated path, use it
-        if current_translated_path and os.path.exists(current_translated_path):
+        if current_translated_path and await asyncio.to_thread(os.path.exists, current_translated_path):
             translated_path = current_translated_path
         else:
             # Fallback: look for the most recent translated file
-            translated_files = glob.glob("../files/transcript_translated_*.vtt")
+            translated_files = await asyncio.to_thread(glob.glob, "../files/transcript_translated_*.vtt")
             if not translated_files:
                 raise HTTPException(status_code=404, detail="No translated subtitle file found. Please complete the translation process first.")
             # Get the most recently created file
-            translated_path = max(translated_files, key=os.path.getctime)
+            translated_path = await asyncio.to_thread(max, translated_files, key=os.path.getctime)
         
-        if not os.path.exists(translated_path):
+        if not await asyncio.to_thread(os.path.exists, translated_path):
             raise HTTPException(status_code=404, detail="Translated subtitle file not found. Please complete the translation process first.")
         
         filename = os.path.basename(translated_path)
@@ -341,7 +354,7 @@ async def cleanup_files():
     Endpoint to manually trigger cleanup of intermediate files.
     """
     try:
-        result = cleanup_intermediate_files()
+        result = await cleanup_intermediate_files()
         logger.info(f"Manual cleanup completed: {result.message}")
         return result
     except Exception as e:
@@ -370,15 +383,25 @@ async def files_status():
     files_dir = Path("../files")
     existing_files = []
     
-    if files_dir.exists():
-        for file_path in files_dir.iterdir():
-            if file_path.is_file():
-                existing_files.append({
+    if await asyncio.to_thread(files_dir.exists):
+        async def process_file(file_path):
+            if await asyncio.to_thread(file_path.is_file):
+                stat_result = await asyncio.to_thread(file_path.stat)
+                return {
                     "name": file_path.name,
                     "path": str(file_path),
-                    "size": file_path.stat().st_size,
+                    "size": stat_result.st_size,
                     "tracked_for_cleanup": str(file_path) in intermediate_files
-                })
+                }
+            return None
+        
+        # Process files concurrently
+        tasks = []
+        for file_path in await asyncio.to_thread(files_dir.iterdir):
+            tasks.append(process_file(file_path))
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        existing_files = [result for result in results if result is not None and not isinstance(result, Exception)]
     
     return {
         "current_audio_filename": current_audio_filename,
@@ -396,13 +419,13 @@ async def shutdown_event():
     """
     logger.info("Application shutting down, cleaning up intermediate files...")
     try:
-        result = cleanup_intermediate_files()
+        result = await cleanup_intermediate_files()
         logger.info(f"Shutdown cleanup completed: {result.message}")
     except Exception as e:
         logger.error(f"Error during shutdown cleanup: {e}")
 
 # Also register cleanup for when the process exits (for cases where FastAPI might not cleanly shut down)
-atexit.register(lambda: cleanup_intermediate_files())
+atexit.register(lambda: asyncio.run(cleanup_intermediate_files()))
 
 if __name__ == "__main__":
     # Run the FastAPI app with Uvicorn

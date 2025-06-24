@@ -56,6 +56,9 @@ To set up the project locally, follow these steps:
     GOOGLE_API_KEY="YOUR_API_KEY"
     ```
 4.  **Install the required dependencies**.
+    ```bash
+    pip install -r requirements.txt
+    ```
 5.  **Run the FastAPI server**:
     ```bash
     uvicorn code.Fast_api:app --reload

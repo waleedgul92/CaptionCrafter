@@ -37,7 +37,7 @@ CaptionCrafter provides the following API endpoints:
   - **Backend**: Python, FastAPI
   - **Transcription**: faster\_whisper
   - **Translation**: Google Gemini
-  - **Other Libraries**: moviepy, pydub, speech\_recognition
+  - **Other Libraries**: moviepy, fastapi , langchain
 
 ## Setup
 

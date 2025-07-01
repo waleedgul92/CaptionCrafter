@@ -90,52 +90,6 @@ def transcribe_audio_to_text(audio_file , language="ja",model_size="medium",devi
 
 
 
-def split_long_segment(segment, max_chars=40, max_duration=5.0):
-    """
-    Split long segments into smaller chunks based on character count and duration
-    """
-    text = segment.text.strip()
-    duration = segment.end - segment.start
-    
-    # If segment is within limits, return as is
-    if len(text) <= max_chars and duration <= max_duration:
-        return [segment]
-    
-    # Split by natural sentence boundaries first
-    sentences = re.split(r'[.!?。！？]+', text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-    
-    if len(sentences) <= 1:
-        # If no sentence boundaries, split by clauses or commas
-        clauses = re.split(r'[,，、;；]+', text)
-        clauses = [c.strip() for c in clauses if c.strip()]
-        sentences = clauses if len(clauses) > 1 else [text]
-    
-    # Create new segments with estimated timestamps
-    new_segments = []
-    chars_per_second = len(text) / duration if duration > 0 else 1
-    current_time = segment.start
-    
-    for i, sentence in enumerate(sentences):
-        if not sentence:
-            continue
-            
-        # Estimate duration for this sentence
-        sentence_duration = len(sentence) / chars_per_second
-        sentence_end = min(current_time + sentence_duration, segment.end)
-        
-        # Create a new segment-like object
-        class SegmentChunk:
-            def __init__(self, start, end, text):
-                self.start = start
-                self.end = end
-                self.text = text
-        
-        new_segments.append(SegmentChunk(current_time, sentence_end, sentence))
-        current_time = sentence_end
-    
-    return new_segments
-
 
 def format_timestamp(seconds):
     logger.debug(f"Formatting timestamp for {seconds} seconds")

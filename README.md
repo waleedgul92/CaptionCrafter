@@ -61,6 +61,7 @@ To set up the project locally, follow these steps:
     ```
 5.  **Run the FastAPI server**:
     ```bash
+    cd code
     uvicorn code.Fast_api:app --reload
     ```
 6.  Open the `main.html` file in your browser to use the application.

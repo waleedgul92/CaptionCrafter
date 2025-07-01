@@ -1,15 +1,5 @@
 import os
-import argparse
-import speech_recognition as sr
-from pydub import AudioSegment
-
-import os
-import argparse
 from moviepy import VideoFileClip
-from faster_whisper import WhisperModel
-from pydub import AudioSegment
-import speech_recognition as sr
-from io import BytesIO
 from faster_whisper import WhisperModel
 import logging
 import re

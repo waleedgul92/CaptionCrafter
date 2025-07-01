@@ -1,13 +1,12 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Union
+from typing import List
 import chardet
 from fastapi.responses import FileResponse
 
 import logging
 import uvicorn
-import shutil
 import os
 import tempfile
 import glob

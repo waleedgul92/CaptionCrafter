@@ -326,7 +326,7 @@ async def download_translated_subtitle():
             translated_path = current_translated_path
         else:
             # Fallback: look for the most recent translated file
-            translated_files = await asyncio.to_thread(glob.glob, "../files/transcript_translated_*.vtt")
+            translated_files = await asyncio.to_thread(glob.glob, "../files/translated_transcript_*.vtt")
             if not translated_files:
                 raise HTTPException(status_code=404, detail="No translated subtitle file found. Please complete the translation process first.")
             # Get the most recently created file

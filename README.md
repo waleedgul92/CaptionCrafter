@@ -69,3 +69,7 @@ To set up the project locally, follow these steps:
 
 
 ## Video Demo
+
+
+https://github.com/user-attachments/assets/1ed8d480-d3f3-449b-890a-63f6a115d408
+

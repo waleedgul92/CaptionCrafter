@@ -25,7 +25,7 @@ def load_gemini_model():
     try:
         logger.info("Loading Gemini model...")
         # Using ChatGoogleGenerativeAI for chat-optimized models like gemini-pro
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=google_api_key ,temperature=0.1,
+        llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", google_api_key=google_api_key ,temperature=0.1,
                                               safety_settings={
                 HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,

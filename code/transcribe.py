@@ -1,5 +1,6 @@
 import os
 from moviepy import VideoFileClip
+import whisper
 from faster_whisper import WhisperModel
 import logging
 import re
@@ -32,7 +33,7 @@ def extract_audio(input_video, input_video_name):
 
 
 
-def transcribe_audio_to_text(audio_file , language="ja",model_size="medium",device="gpu",compute_type="int8",max_duration=2.0): 
+def transcribe_audio_to_text(audio_file , language="ja",model_size="medium",device="cuda",compute_type="int8",max_duration=2.0): 
     
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
     
